@@ -5,7 +5,7 @@ ROLE_ARN      ?= arn:aws:iam::491085413993:role/arcade-hooks-lambda-role
 REGION        ?= us-east-1
 CA_PEM        ?= .artifacts/certificates/ca.pem
 
-.PHONY: package deploy
+.PHONY: package deploy update lint
 
 package:
 	mkdir -p .artifacts
@@ -41,3 +41,7 @@ update:
 		--function-name $(FUNCTION_NAME) \
 		--zip-file fileb://.artifacts/function.zip
 	@echo "Updated code for $(FUNCTION_NAME)"
+
+lint:
+	uv run ruff check hooks/ lambda_handler/
+	uv run ruff format hooks/ lambda_handler/

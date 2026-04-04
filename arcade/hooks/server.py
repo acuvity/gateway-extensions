@@ -7,13 +7,21 @@ import httpx
 import json
 from dotenv import load_dotenv
 from typing import Any
-from hooks.models import Context, HookResponse, PostRequest, PreRequest, ToolInfo, AccessRequest
+from hooks.models import (
+    Context,
+    HookResponse,
+    PostRequest,
+    PreRequest,
+    ToolInfo,
+    AccessRequest,
+)
 import jwt
-import ssl, urllib.request, json as _json
+import urllib.request
+import json as _json
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO,force=True)
+logging.basicConfig(level=logging.INFO, force=True)
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="Arcade Hooks Server")
@@ -21,10 +29,13 @@ app = FastAPI(title="Arcade Hooks Server")
 SUPPORTED_ISSUERS = {
     "https://api.acuvity.ai",
     "https://api.acuvity.dev",
-    "https://api.acuvity.us"
+    "https://api.acuvity.us",
 }
 
-def build_claims(user_id: str, context: Context | None = None, provider: str | None = None) -> list[str]:
+
+def build_claims(
+    user_id: str, context: Context | None = None, provider: str | None = None
+) -> list[str]:
     claims = [
         f"provider={provider}" if provider else "provider=arcade-hooks",
         f"arcade:user-id={user_id}",
@@ -32,7 +43,11 @@ def build_claims(user_id: str, context: Context | None = None, provider: str | N
 
     oauth_user_info = None
     if context and context.authorization:
-        for auth in (context.authorization if isinstance(context.authorization, list) else [context.authorization]):
+        for auth in (
+            context.authorization
+            if isinstance(context.authorization, list)
+            else [context.authorization]
+        ):
             oauth_user_info = auth.get("oauth2", {}).get("user_info")
             if oauth_user_info:
                 break
@@ -99,7 +114,9 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
         log.info("token validated successfully for issuer: %s", iss)
     except Exception as e:
         log.error("token validation failed: %s", e)
-        raise HTTPException(status_code=401, detail=f"token signature validation failed: {e}") from e
+        raise HTTPException(
+            status_code=401, detail=f"token signature validation failed: {e}"
+        ) from e
 
     # extract apex-url from validated token
     apex_url = unverified.get("opaque", {}).get("apex-url")
@@ -110,8 +127,23 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
     return token, police_url, provider
 
 
-async def call_apex(messages: list[str], msg_type: str, tools: dict, claims: list[str], user_id: str | None,token: str, police_url: str, provider: str | None) -> dict:
-    log.info("calling apex police_url=%s msg_type=%s user_id=%s tools=%s", police_url, msg_type, user_id, list(tools.keys()))
+async def call_apex(
+    messages: list[str],
+    msg_type: str,
+    tools: dict,
+    claims: list[str],
+    user_id: str | None,
+    token: str,
+    police_url: str,
+    provider: str | None,
+) -> dict:
+    log.info(
+        "calling apex police_url=%s msg_type=%s user_id=%s tools=%s",
+        police_url,
+        msg_type,
+        user_id,
+        list(tools.keys()),
+    )
     ssl_ctx = ssl.create_default_context()
     if os.getenv("CA_PATH"):
         ssl_ctx.load_verify_locations(os.path.expanduser(os.getenv("CA_PATH", "")))
@@ -121,12 +153,25 @@ async def call_apex(messages: list[str], msg_type: str, tools: dict, claims: lis
         async with httpx.AsyncClient(verify=ssl_ctx) as client:
             res = await client.post(
                 police_url,
-                json={"messages": messages, "anonymization": "VariableSize", "provider": provider, "type": msg_type, "tools": tools, "user": {"claims": claims, "name": user_id}},
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={
+                    "messages": messages,
+                    "anonymization": "VariableSize",
+                    "provider": provider,
+                    "type": msg_type,
+                    "tools": tools,
+                    "user": {"claims": claims, "name": user_id},
+                },
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
             )
         if res.status_code != 200:
             log.error("apex call failed: %s, response code %s", res.text, res.status_code)
-            return {"decision": "Deny", "reasons": [f"Apex call failed with status code {res.status_code}"]}
+            return {
+                "decision": "Deny",
+                "reasons": [f"Apex call failed with status code {res.status_code}"],
+            }
         log.info("apex status=%s", res.status_code)
         return res.json()
     except httpx.RequestError as e:
@@ -137,17 +182,33 @@ async def call_apex(messages: list[str], msg_type: str, tools: dict, claims: lis
 def handle_apex_response(res_json: dict, override_key: str) -> HookResponse:
     log.info("apex response: %s", res_json)
     if res_json.get("decision") == "Deny":
-        return HookResponse(code="CHECK_FAILED", error_message=res_json.get("reasons", ["Unknown reason"])[0])
+        return HookResponse(
+            code="CHECK_FAILED",
+            error_message=res_json.get("reasons", ["Unknown reason"])[0],
+        )
     if res_json.get("decision") == "Allow":
         data = json.loads(res_json.get("extractions", [{}])[0].get("data", "{}"))
         for detection in res_json.get("extractions", [{}])[0].get("detections", []):
-            if detection.get("redacted") == True:
+            if detection.get("redacted"):
                 return HookResponse(code="OK", override={override_key: data})
     return HookResponse()
 
 
-async def run_apex_hook(request: Request, context: Context | None, tool: ToolInfo, message: Any, msg_type: str, override_key: str) -> HookResponse:
-    log.info("run_apex_hook msg_type=%s tool=%s/%s user_id=%s", msg_type, tool.toolkit, tool.name, context.user_id if context else None)
+async def run_apex_hook(
+    request: Request,
+    context: Context | None,
+    tool: ToolInfo,
+    message: Any,
+    msg_type: str,
+    override_key: str,
+) -> HookResponse:
+    log.info(
+        "run_apex_hook msg_type=%s tool=%s/%s user_id=%s",
+        msg_type,
+        tool.toolkit,
+        tool.name,
+        context.user_id if context else None,
+    )
     token, police_url, provider = verify_apex_auth(request)  # raises HTTPException(401) on failure
     if not police_url:
         raise HTTPException(status_code=500, detail="apex-url missing from token")
@@ -156,7 +217,16 @@ async def run_apex_hook(request: Request, context: Context | None, tool: ToolInf
     claims = build_claims(user_id, context, provider) if user_id else []
     tool_input = f"{tool.toolkit}/{tool.name}"
     tools = {tool_input: {"name": tool_input, "category": "Server"}}
-    res_json = await call_apex([json.dumps(message)], msg_type, tools, claims, user_id, token=token, police_url=police_url, provider=provider)
+    res_json = await call_apex(
+        [json.dumps(message)],
+        msg_type,
+        tools,
+        claims,
+        user_id,
+        token=token,
+        police_url=police_url,
+        provider=provider,
+    )
     return handle_apex_response(res_json, override_key)
 
 
@@ -167,18 +237,24 @@ async def health():
 
 @app.post("/access")
 async def access_hook(request: Request, payload: AccessRequest):
-    log.info("access_hook user_id=%s toolkits=%s", payload.user_id, list(payload.toolkits.keys()))
+    log.info(
+        "access_hook user_id=%s toolkits=%s",
+        payload.user_id,
+        list(payload.toolkits.keys()),
+    )
     verify_apex_auth(request)  # raises HTTPException(401) on failure
     return {}
 
 
 @app.post("/pre")
 async def pre_hook(request: Request, payload: PreRequest) -> HookResponse:
-    return await run_apex_hook(request, payload.context, payload.tool, payload.inputs, "Input", "inputs")
+    return await run_apex_hook(
+        request, payload.context, payload.tool, payload.inputs, "Input", "inputs"
+    )
 
 
 @app.post("/post")
 async def post_hook(request: Request, payload: PostRequest) -> HookResponse:
-    return await run_apex_hook(request, payload.context, payload.tool, payload.output, "Output", "outputs")
-
-
+    return await run_apex_hook(
+        request, payload.context, payload.tool, payload.output, "Output", "outputs"
+    )

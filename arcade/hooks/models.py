@@ -26,11 +26,13 @@ class AccessRequest(BaseModel):
     user_id: str
     toolkits: dict[str, Any]
 
+
 class PreRequest(BaseModel):
     execution_id: str
     tool: ToolInfo
     inputs: dict[str, Any]
     context: Context | None = None
+
 
 class PostRequest(BaseModel):
     execution_id: str
