@@ -34,19 +34,22 @@ SUPPORTED_ISSUERS = {
 
 
 def build_claims(
-    user_id: str, context: Context | None = None, provider: str | None = None
+    user_id: str, context: Context | None = None, provider: str | None = None, identity: list | None = None
 ) -> list[str]:
-    claims = [
-        f"provider={provider}" if provider else "provider=arcade-hooks",
-        f"arcade:user-id={user_id}",
-    ]
+
+    claims = identity if identity else []
+
+    claims.extend(
+        [
+            f"provider={provider}" if provider else "provider=arcade-hooks",
+            f"arcade:user-id={user_id}",
+        ]
+    )
 
     oauth_user_info = None
     if context and context.authorization:
         for auth in (
-            context.authorization
-            if isinstance(context.authorization, list)
-            else [context.authorization]
+            context.authorization if isinstance(context.authorization, list) else [context.authorization]
         ):
             oauth_user_info = auth.get("oauth2", {}).get("user_info")
             if oauth_user_info:
@@ -85,6 +88,13 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
         raise HTTPException(status_code=401, detail=f"invalid token: {e}") from e
 
     iss = unverified["iss"]
+    identity = unverified["identity"]
+    provider = "arcade-dev"
+
+    for i in identity:
+        if i.startswith("@apptoken:name="):
+            provider = i.split("=", 1)[1]
+
     log.info("token issuer: %s", iss)
 
     if iss not in SUPPORTED_ISSUERS:
@@ -114,17 +124,12 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
         log.info("token validated successfully for issuer: %s", iss)
     except Exception as e:
         log.error("token validation failed: %s", e)
-        raise HTTPException(
-            status_code=401, detail=f"token signature validation failed: {e}"
-        ) from e
-
+        raise HTTPException(status_code=401, detail=f"token signature validation failed: {e}") from e
     # extract apex-url from validated token
     apex_url = unverified.get("opaque", {}).get("apex-url")
-    provider = unverified.get("opaque", {}).get("usr/apex/provider")
     police_url = (apex_url + "/_acuvity/police") if apex_url else None
-    log.info("police_url: %s", police_url)
-    log.info("provider: %s", provider)
-    return token, police_url, provider
+
+    return token, police_url, provider, identity
 
 
 async def call_apex(
@@ -209,16 +214,16 @@ async def run_apex_hook(
         tool.name,
         context.user_id if context else None,
     )
-    token, police_url, provider = verify_apex_auth(request)  # raises HTTPException(401) on failure
+    token, police_url, provider, identity = verify_apex_auth(request)  # raises HTTPException(401) on failure
     if not police_url:
         raise HTTPException(status_code=500, detail="apex-url missing from token")
 
     user_id = context.user_id if context else None
-    claims = build_claims(user_id, context, provider) if user_id else []
+    claims = build_claims(user_id, context, provider, identity) if user_id else []
     tool_input = f"{tool.toolkit}/{tool.name}"
     tools = {tool_input: {"name": tool_input, "category": "Server"}}
     res_json = await call_apex(
-        [json.dumps(message)],
+        [json.dumps(message, indent=2)],
         msg_type,
         tools,
         claims,
@@ -248,13 +253,9 @@ async def access_hook(request: Request, payload: AccessRequest):
 
 @app.post("/pre")
 async def pre_hook(request: Request, payload: PreRequest) -> HookResponse:
-    return await run_apex_hook(
-        request, payload.context, payload.tool, payload.inputs, "Input", "inputs"
-    )
+    return await run_apex_hook(request, payload.context, payload.tool, payload.inputs, "Input", "inputs")
 
 
 @app.post("/post")
 async def post_hook(request: Request, payload: PostRequest) -> HookResponse:
-    return await run_apex_hook(
-        request, payload.context, payload.tool, payload.output, "Output", "outputs"
-    )
+    return await run_apex_hook(request, payload.context, payload.tool, payload.output, "Output", "outputs")
