@@ -1,23 +1,22 @@
+import json
 import logging
 import os
 import ssl
-
-from fastapi import FastAPI, HTTPException, Request
-import httpx
-import json
-from dotenv import load_dotenv
 from typing import Any
+
+import httpx
+import jwt
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+
 from hooks.models import (
+    AccessRequest,
     Context,
     HookResponse,
     PostRequest,
     PreRequest,
     ToolInfo,
-    AccessRequest,
 )
-import jwt
-import urllib.request
-import json as _json
 
 load_dotenv()
 
@@ -73,34 +72,7 @@ def build_claims(
     return claims
 
 
-def verify_apex_auth(request: Request) -> tuple[str, str | None]:
-    auth_token = request.headers.get("Authorization", "")
-    token = auth_token.removeprefix("Bearer ") if auth_token.startswith("Bearer ") else None
-    if not token:
-        raise HTTPException(status_code=401, detail="missing Bearer token")
-
-    # decode without validation to extract iss
-    try:
-        unverified = jwt.decode(token, options={"verify_signature": False})
-        if "iss" not in unverified:
-            raise ValueError("token has no 'iss' field")
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"invalid token: {e}") from e
-
-    iss = unverified["iss"]
-    identity = unverified["identity"]
-    provider = "arcade-dev"
-
-    for i in identity:
-        if i.startswith("@apptoken:name="):
-            provider = i.split("=", 1)[1]
-
-    log.info("token issuer: %s", iss)
-
-    if iss not in SUPPORTED_ISSUERS:
-        raise HTTPException(status_code=401, detail=f"unsupported issuer: {iss}")
-
-    # fetch JWKS from issuer and validate signature + audience
+def _validate_token_signature(token: str, iss: str, unverified: dict) -> None:
     jwks_url = f"{iss}/.well-known/jwks.json"
     log.info("fetching JWKS from: %s", jwks_url)
     try:
@@ -110,22 +82,50 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
         else:
             ssl_ctx.load_verify_locations("/var/task/certificates/ca.pem")
 
-        with urllib.request.urlopen(jwks_url, context=ssl_ctx) as r:
-            jwks_data = _json.loads(r.read().decode())
-
-        jwks = jwt.PyJWKSet.from_dict(jwks_data)
-        header = jwt.get_unverified_header(token)
-        kid = header.get("kid")
+        res = httpx.get(jwks_url, verify=ssl_ctx)
+        jwks = jwt.PyJWKSet.from_dict(res.json())
+        kid = jwt.get_unverified_header(token).get("kid")
         signing_key = next((k for k in jwks.keys if k.key_id == kid), None)
         if signing_key is None:
             raise ValueError(f"no matching key found for kid={kid}")
-        audience = unverified.get("aud")
-        jwt.decode(token, signing_key.key, algorithms=["RS256", "ES256"], audience=audience)
+        jwt.decode(token, signing_key.key, algorithms=["RS256", "ES256"], audience=unverified.get("aud"))
         log.info("token validated successfully for issuer: %s", iss)
     except Exception as e:
         log.error("token validation failed: %s", e)
         raise HTTPException(status_code=401, detail=f"token signature validation failed: {e}") from e
-    # extract apex-url from validated token
+
+
+def verify_apex_auth(request: Request) -> tuple[str, str | None]:
+    auth_token = request.headers.get("Authorization", "")
+    token = auth_token.removeprefix("Bearer ") if auth_token.startswith("Bearer ") else None
+    if not token:
+        raise HTTPException(status_code=401, detail="missing Bearer token")
+
+    try:
+        unverified = jwt.decode(token, options={"verify_signature": False})
+        if "iss" not in unverified:
+            raise ValueError("token has no 'iss' field")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"invalid token: {e}") from e
+
+    iss = unverified.get("iss")
+    if not iss:
+        raise HTTPException(status_code=401, detail="invalid 'iss' field in token")
+    identity = unverified.get("identity", [])
+    if not identity:
+        raise HTTPException(status_code=401, detail="invalid 'identity' field in token")
+
+    provider = "arcade-dev"
+    for i in identity:
+        if i.startswith("@apptoken:name="):
+            provider = i.split("=", 1)[1]
+
+    log.info("token issuer: %s", iss)
+    if iss not in SUPPORTED_ISSUERS:
+        raise HTTPException(status_code=401, detail=f"unsupported issuer: {iss}")
+
+    _validate_token_signature(token, iss, unverified)
+
     apex_url = unverified.get("opaque", {}).get("apex-url")
     police_url = (apex_url + "/_acuvity/police") if apex_url else None
 
