@@ -74,7 +74,6 @@ def build_claims(
 
 def _validate_token_signature(token: str, iss: str, unverified: dict) -> None:
     jwks_url = f"{iss}/.well-known/jwks.json"
-    log.info("fetching JWKS from: %s", jwks_url)
     try:
         ssl_ctx = ssl.create_default_context()
         if os.getenv("CA_PATH"):
@@ -89,7 +88,6 @@ def _validate_token_signature(token: str, iss: str, unverified: dict) -> None:
         if signing_key is None:
             raise ValueError(f"no matching key found for kid={kid}")
         jwt.decode(token, signing_key.key, algorithms=["RS256", "ES256"], audience=unverified.get("aud"))
-        log.info("token validated successfully for issuer: %s", iss)
     except Exception as e:
         log.error("token validation failed: %s", e)
         raise HTTPException(status_code=401, detail=f"token signature validation failed: {e}") from e
@@ -120,7 +118,6 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
         if i.startswith("@apptoken:name="):
             provider = i.split("=", 1)[1]
 
-    log.info("token issuer: %s", iss)
     if iss not in SUPPORTED_ISSUERS:
         raise HTTPException(status_code=401, detail=f"unsupported issuer: {iss}")
 
@@ -142,13 +139,7 @@ async def call_apex(
     police_url: str,
     provider: str | None,
 ) -> dict:
-    log.info(
-        "calling apex police_url=%s msg_type=%s user_id=%s tools=%s",
-        police_url,
-        msg_type,
-        user_id,
-        list(tools.keys()),
-    )
+
     ssl_ctx = ssl.create_default_context()
     if os.getenv("CA_PATH"):
         ssl_ctx.load_verify_locations(os.path.expanduser(os.getenv("CA_PATH", "")))
@@ -185,7 +176,7 @@ async def call_apex(
 
 
 def handle_apex_response(res_json: dict, override_key: str) -> HookResponse:
-    log.info("apex response: %s", res_json)
+
     if res_json.get("decision") == "Deny":
         return HookResponse(
             code="CHECK_FAILED",
@@ -242,11 +233,6 @@ async def health():
 
 @app.post("/access")
 async def access_hook(request: Request, payload: AccessRequest):
-    log.info(
-        "access_hook user_id=%s toolkits=%s",
-        payload.user_id,
-        list(payload.toolkits.keys()),
-    )
     verify_apex_auth(request)  # raises HTTPException(401) on failure
     return {}
 
