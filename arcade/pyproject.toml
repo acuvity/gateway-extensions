@@ -1,0 +1,32 @@
+[project]
+name = "arcade"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.135.3",
+    "uvicorn>=0.42.0",
+    "langchain-core>=1.2.21",
+    "mangum>=0.21.0",
+    "python-dotenv>=1.2.2",
+    "PyJWT[crypto]>=2.8.0",
+    "pytest>=9.0.2",
+    "pytest-mock>=3.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "anyio>=4.13.0",
+    "pytest-anyio>=0.0.0",
+    "respx>=0.22.0",
+    "ruff>=0.15.9",
+]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "C90", "UP", "B"] # pycodestyle, pyflakes, warnings, imports, naming, complexity, pyupgrade, bugbear
