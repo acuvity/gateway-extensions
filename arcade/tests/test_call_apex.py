@@ -1,10 +1,17 @@
 import json
+from unittest.mock import patch
 
 import pytest
 import respx
 from httpx import RequestError, Response
 
 from hooks.server import call_apex
+
+
+@pytest.fixture(autouse=True)
+def _mock_ssl():
+    with patch("hooks.server.ssl.create_default_context"):
+        yield
 
 ARGS = dict(
     messages=["hello"],
