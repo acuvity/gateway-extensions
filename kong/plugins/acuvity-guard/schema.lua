@@ -14,7 +14,6 @@ return {
                     { timeout_ms = { type = "number", default = 3000 } },
                     { apex_url = { type = "string", required = true } },
                     { acuvity_token = { type = "string", required = true } },
-                    -- { ca_cert_path = { type = "string", default = "/etc/kong/ca-chain-external.pem" } },
                 },
             },
         },

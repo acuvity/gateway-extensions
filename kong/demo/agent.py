@@ -29,6 +29,6 @@ def exa_search(query: str) -> str:
 agent = create_agent(llm, [exa_search])
 
 # Run
-result = agent.invoke({"messages": [{"role": "user", "content": "can you look for restaurant near tempe"}]})
+result = agent.invoke({"messages": [{"role": "user", "content": "can you give me some engineering fields"}]})
 for msg in result["messages"]:
     print(f"\n[{msg.type}]: {msg.content}")

@@ -29,8 +29,8 @@ plugins:
       message: Blocked by policy
       provider: kong-proxy
       timeout_ms: 60000
-      apex_url: 
-      acuvity_token: 
+      apex_url: ${APEX_URL}
+      acuvity_token: ${ACUVITY_TOKEN}
 
   - name: acuvity-guard
     service: exa-service
@@ -38,5 +38,5 @@ plugins:
       message: Blocked by policy
       provider: kong-proxy
       timeout_ms: 60000
-      apex_url: 
-      acuvity_token: 
+      apex_url: ${APEX_URL}
+      acuvity_token: ${ACUVITY_TOKEN}

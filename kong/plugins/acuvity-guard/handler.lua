@@ -6,23 +6,6 @@ local plugin = {
     VERSION = "0.2.0",
 }
 
--- -- Cache for CA cert content (read once from file)
--- local ca_cert_cache = {}
-
--- local function get_ca_cert(path)
---     if ca_cert_cache[path] then
---         return ca_cert_cache[path]
---     end
---     local f, err = io.open(path, "r")
---     if not f then
---         return nil, "failed to open CA cert file: " .. tostring(err)
---     end
---     local content = f:read("*a")
---     f:close()
---     ca_cert_cache[path] = content
---     return content
--- end
-
 -- Helper: POST JSON to the police endpoint
 local function police_request(conf, payload)
     local httpc = http.new()
@@ -45,42 +28,6 @@ local function police_request(conf, payload)
 end
 
 function plugin:access(conf)
-    -- auth = kong.request.get_header("authorization") or ""
-    -- if not auth:find("^Bearer ") then
-    --     return kong.response.exit(401, { error = "missing Bearer token" })
-    -- end
-
-    -- local token = auth:gsub("^Bearer%s+", "")
-
-    -- local ok, unverified = pcall(jwt.decode, token, { verify_signature = false })
-    -- if not ok then
-    --     return kong.response.exit(401, { error = "invalid token: " .. tostring(unverified) })
-    -- end
-
-    -- local opaque = unverified.opaque or {}
-    -- local apex_url = opaque["apex-url"]
-    -- if not apex_url then
-    --     return kong.response.exit(500, { error = "apex-url missing from token" })
-    -- end
-
-    -- local identity = unverified.identity or {}
-    -- local provider = conf.provider or "kong-proxy"
-    -- for _, i in ipairs(identity) do
-    --     if type(i) == "string" and i:find("^@apptoken:name=") then
-    --         provider = i:match("^@apptoken:name=(.+)$")
-    --     end
-    -- end
-
-    -- local body = kong.request.get_raw_body() or "{}"
-    -- local police_payload = {
-    --     messages = { body },
-    --     anonymization = "VariableSize",
-    --     provider = provider,
-    --     type = "Input",
-    --     tools = { ["anthropic/messages"] = { name = "anthropic/messages", category = "Server" } },
-    --     user = { claims = identity, name = cjson.null },
-    -- }
-
     local raw = kong.request.get_raw_body()
     if not raw or raw == "" then
         raw = "{}"
@@ -112,7 +59,7 @@ function plugin:access(conf)
         user = {
             userClaims = {
                 "provider=" .. provider,
-                "@apptoken:name=kong-demo",
+                "@apptoken:name=new-kong-test-token",
             },
             username = "kanav@acuvity.ai",
         },
@@ -220,7 +167,7 @@ function plugin:response(conf)
         user = {
             userClaims = {
                 "provider=" .. provider,
-                "@apptoken:name=kong-demo",
+                "@apptoken:name=new-kong-test-token",
             },
             username = "kanav@acuvity.ai",
         },
@@ -244,6 +191,44 @@ function plugin:response(conf)
         local reasons = result.reasons
         local reason = (reasons and reasons[1]) or (conf.message or "Blocked by policy")
         return kong.response.exit(403, { error = reason })
+    end
+
+    -- Redaction on output
+    local extractions = result.extractions
+    if extractions and #extractions > 0 then
+        local ext = extractions[1]
+        local has_redaction = false
+        local detections = ext.detections or {}
+        for _, d in ipairs(detections) do
+            if d.redacted then
+                has_redaction = true
+                break
+            end
+        end
+        if has_redaction then
+            local redacted_text = ext.data or ""
+            if path:find("/anthropic") then
+                -- Replace text in Anthropic content blocks
+                if parsed and parsed.content then
+                    for _, block in ipairs(parsed.content) do
+                        if block.type == "text" and block.text then
+                            block.text = redacted_text
+                        end
+                    end
+                    kong.response.set_raw_body(cjson.encode(parsed))
+                end
+            elseif path:find("/exa") then
+                -- Replace text in Exa results
+                if parsed and parsed.results then
+                    for _, r in ipairs(parsed.results) do
+                        r.text = redacted_text
+                    end
+                    kong.response.set_raw_body(cjson.encode(parsed))
+                end
+            else
+                kong.response.set_raw_body(redacted_text)
+            end
+        end
     end
 end
 
