@@ -1,5 +1,0 @@
-FROM kong/kong-gateway:3.14
-
-USER root
-COPY plugins/acuvity-guard /usr/local/share/lua/5.1/kong/plugins/acuvity-guard
-USER kong

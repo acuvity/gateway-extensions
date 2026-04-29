@@ -4,7 +4,7 @@ set -e
 # === Konnect Control Plane + Docker Data Plane ===
 # Creates/reuses a Konnect control plane, syncs config, and runs a local data plane.
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 : "${KONNECT_TOKEN:?Export KONNECT_TOKEN with your Konnect PAT}"
 : "${APEX_URL:?Export APEX_URL (e.g. https://xxx.acuvity.dev)}"

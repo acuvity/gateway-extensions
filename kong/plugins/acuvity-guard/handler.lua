@@ -120,12 +120,20 @@ function plugin:response(conf)
     if not raw or raw == "" then
         return
     end
+
+    -- Re-set the body and Content-Length to ensure consistency after buffering
+    kong.response.set_raw_body(raw)
+    kong.response.set_header("Content-Length", tostring(#raw))
+
     local body = raw
 
     -- Detect which service based on the original request path
     local path = kong.request.get_path() or ""
 
-    local parsed = cjson.decode(body) or {}
+    local parsed = cjson.decode(body)
+    if not parsed then
+        return
+    end
 
     local messages = {}
     local tool_name
@@ -215,7 +223,9 @@ function plugin:response(conf)
                             block.text = redacted_text
                         end
                     end
-                    kong.response.set_raw_body(cjson.encode(parsed))
+                    local new_body = cjson.encode(parsed)
+                    kong.response.set_raw_body(new_body)
+                    kong.response.set_header("Content-Length", tostring(#new_body))
                 end
             elseif path:find("/exa") then
                 -- Replace text in Exa results
@@ -223,10 +233,13 @@ function plugin:response(conf)
                     for _, r in ipairs(parsed.results) do
                         r.text = redacted_text
                     end
-                    kong.response.set_raw_body(cjson.encode(parsed))
+                    local new_body = cjson.encode(parsed)
+                    kong.response.set_raw_body(new_body)
+                    kong.response.set_header("Content-Length", tostring(#new_body))
                 end
             else
                 kong.response.set_raw_body(redacted_text)
+                kong.response.set_header("Content-Length", tostring(#redacted_text))
             end
         end
     end

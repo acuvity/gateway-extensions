@@ -5,11 +5,13 @@ from langchain_core.tools import tool
 from langchain.agents import create_agent
 import httpx
 
+KONG_PROXY_URL = os.environ.get("KONG_PROXY_URL", "http://localhost:8000")
+
 # LLM via Kong proxy
 llm = ChatAnthropic(
     model="claude-sonnet-4-20250514",
     anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
-    base_url="http://localhost:8000/anthropic",
+    base_url=f"{KONG_PROXY_URL}/anthropic",
 )
 
 # Simple Exa search tool
@@ -17,7 +19,7 @@ llm = ChatAnthropic(
 def exa_search(query: str) -> str:
     """Search the web using Exa AI."""
     res = httpx.post(
-        "http://localhost:8000/exa/search",
+        f"{KONG_PROXY_URL}/exa/search",
         headers={"x-api-key": os.environ["EXA_API_KEY"]},
         json={"query": query, "num_results": 3, "type": "neural"},
         timeout=30,
