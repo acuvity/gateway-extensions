@@ -1,0 +1,42 @@
+_format_version: "3.0"
+
+services:
+  - name: anthropic-service
+    url: https://api.anthropic.com
+    routes:
+      - name: anthropic-route
+        paths:
+          - /anthropic
+        protocols:
+          - http
+          - https
+        strip_path: true
+  - name: exa-service
+    url: https://api.exa.ai
+    routes:
+      - name: exa-route
+        paths:
+          - /exa
+        protocols:
+          - http
+          - https
+        strip_path: true
+
+plugins:
+  - name: acuvity-guard
+    service: anthropic-service
+    config:
+      message: Blocked by policy
+      provider: kong-proxy
+      timeout_ms: 60000
+      apex_url: 
+      acuvity_token: 
+
+  - name: acuvity-guard
+    service: exa-service
+    config:
+      message: Blocked by policy
+      provider: kong-proxy
+      timeout_ms: 60000
+      apex_url: 
+      acuvity_token: 
