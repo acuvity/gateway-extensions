@@ -16,9 +16,12 @@ A custom Lua plugin (`acuvity-guard`) for Kong AI Gateway that enforces Acuvity 
 |-----------|:--------:|---------|-------------|
 | `apex_url` | Yes | - | Acuvity Apex endpoint (e.g. `https://xxx.acuvity.ai`) |
 | `acuvity_token` | Yes | - | Acuvity app token |
+| `username` | Yes | - | Username sent to Acuvity in the user context |
+| `apptoken_name` | Yes | - | App token name sent to Acuvity (e.g. `my-kong-token`) |
 | `message` | No | `Blocked by policy` | Error message returned when request is blocked |
 | `provider` | No | `kong-proxy` | Provider name sent to Acuvity |
 | `timeout_ms` | No | `3000` | Acuvity API request timeout in milliseconds |
+| `debug` | No | `false` | Enable debug logging |
 
 ## Prerequisites
 

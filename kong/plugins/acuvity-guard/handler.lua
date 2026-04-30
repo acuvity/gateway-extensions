@@ -81,8 +81,7 @@ function plugin:access(conf)
 
     if conf.debug then kong.log.debug("acuvity-guard: prompt=" .. tostring(prompt)) end
     if not prompt then
-        kong.log.err("acuvity-guard: no user message found in request body: " .. raw)
-        return kong.response.exit(400, { error = "no user message found in request" })
+        return kong.response.exit(400, { error = "no user message found in request: " .. raw })
     end
 
     local res, err = police_request(conf, build_payload(conf, { prompt }, "Input"))
