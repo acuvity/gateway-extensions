@@ -84,7 +84,7 @@ function plugin:access(conf)
 
     local body = cjson.decode(raw)
     if not body or type(body.messages) ~= "table" then
-        log_error(conf, "request is not OpenAI chat completions format")
+        log_error(conf, "request is not OpenAI chat completions format: " .. raw)
         return kong.response.exit(400, { error = "request is not OpenAI chat completions format" })
     end
 
@@ -117,8 +117,8 @@ function plugin:access(conf)
 
     local result = cjson.decode(res.body)
     if not result then
-        log_error(conf, "failed to decode acuvity response")
-        return kong.response.exit(403, { error = conf.message or "Blocked by policy" })
+        log_error(conf, "failed to decode acuvity response" .. res.body)
+        return kong.response.exit(500, { error = "Failed to decode acuvity response" .. res.body })
     end
 
     log_info(conf, "input scan decision: " .. tostring(result.decision))
@@ -154,7 +154,7 @@ function plugin:response(conf)
     local body = cjson.decode(raw)
     if not body then
         log_error(conf, "response is not valid JSON: " .. raw:sub(1, 200))
-        return kong.response.exit(502, { error = "upstream response is not valid JSON" })
+        return kong.response.exit(502, { error = "upstream response is not valid JSON" .. raw:sub(1, 200) })
     end
 
     local completion
@@ -165,6 +165,7 @@ function plugin:response(conf)
         if msg and type(msg.content) == "string" then
             completion = msg.content
             format = "openai"
+            log_info(conf, "detected response format: " .. tostring(format))
         end
     end
 
@@ -173,6 +174,7 @@ function plugin:response(conf)
             if block.type == "text" and type(block.text) == "string" then
                 completion = block.text
                 format = "anthropic"
+                log_info(conf, "detected response format: " .. tostring(format))
                 break
             end
         end
@@ -196,7 +198,8 @@ function plugin:response(conf)
 
     local result = cjson.decode(res.body)
     if not result then
-        return
+        log_error(conf, "failed to decode acuvity response: " .. res.body)
+        return kong.response.exit(500, { error = "Failed to decode acuvity response: " .. res.body })   
     end
 
     log_info(conf, "output scan decision: " .. tostring(result.decision))
@@ -204,7 +207,7 @@ function plugin:response(conf)
 
     if result.decision == "Deny" then
         local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
-        log_error(conf, "output blocked: " .. reason)
+        log_warn(conf, "output blocked: " .. reason)
         return kong.response.exit(403, { error = reason })
     end
 
