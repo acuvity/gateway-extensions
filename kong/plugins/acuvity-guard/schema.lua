@@ -16,6 +16,7 @@ return {
                     { acuvity_token = { type = "string", required = true } },
                     { username = { type = "string", required = true } },
                     { apptoken_name = { type = "string", required = true } },
+                    { debug = { type = "boolean", default = false } },
                 },
             },
         },

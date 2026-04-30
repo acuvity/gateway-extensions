@@ -60,27 +60,28 @@ end
 
 function plugin:access(conf)
     local raw = kong.request.get_raw_body()
-    kong.log.debug("acuvity-guard: raw request body=" .. tostring(raw))
+    if conf.debug then kong.log.debug("acuvity-guard: raw request body=" .. tostring(raw)) end
     if not raw or raw == "" then
         return kong.response.exit(400, { error = "empty request body" })
     end
 
     local body = cjson.decode(raw)
-    kong.log.debug("acuvity-guard: decoded request body=" .. cjson.encode(body))
+    if conf.debug then kong.log.debug("acuvity-guard: decoded request body=" .. cjson.encode(body)) end
     if not body or type(body.messages) ~= "table" then
         return kong.response.exit(400, { error = "request is not OpenAI chat completions format" })
     end
 
     local prompt
     for _, msg in ipairs(body.messages) do
-        kong.log.debug("acuvity-guard: message role=" .. tostring(msg.role) .. " content_type=" .. type(msg.content))
+        if conf.debug then kong.log.debug("acuvity-guard: message role=" .. tostring(msg.role) .. " content_type=" .. type(msg.content)) end
         if msg.role == "user" and type(msg.content) == "string" then
             prompt = msg.content
         end
     end
 
-    kong.log.debug("acuvity-guard: prompt=" .. tostring(prompt))
+    if conf.debug then kong.log.debug("acuvity-guard: prompt=" .. tostring(prompt)) end
     if not prompt then
+        kong.log.err("acuvity-guard: no user message found in request body: " .. raw)
         return kong.response.exit(400, { error = "no user message found in request" })
     end
 
