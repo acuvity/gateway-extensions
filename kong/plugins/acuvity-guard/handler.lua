@@ -11,20 +11,14 @@ local function log_error(conf, msg)
 end
 
 local function log_warn(conf, msg)
-    if conf.log_level == "warn" or conf.log_level == "info" or conf.log_level == "debug" then
+    if conf.log_level == "warn" or conf.log_level == "info" then
         kong.log.warn("acuvity-guard: " .. msg)
     end
 end
 
 local function log_info(conf, msg)
-    if conf.log_level == "info" or conf.log_level == "debug" then
-        kong.log.info("acuvity-guard: " .. msg)
-    end
-end
-
-local function log_debug(conf, msg)
-    if conf.log_level == "debug" then
-        kong.log.debug("acuvity-guard: " .. msg)
+    if conf.log_level == "info" then
+        kong.log.notice("acuvity-guard: " .. msg)
     end
 end
 
@@ -86,7 +80,7 @@ function plugin:access(conf)
         log_error(conf, "empty request body")
         return kong.response.exit(400, { error = "empty request body" })
     end
-    log_debug(conf, "raw request body: " .. raw)
+    log_info(conf, "raw request body: " .. raw)
 
     local body = cjson.decode(raw)
     if not body or type(body.messages) ~= "table" then
@@ -96,7 +90,7 @@ function plugin:access(conf)
 
     local prompt
     for _, msg in ipairs(body.messages) do
-        log_debug(conf, "message role=" .. tostring(msg.role) .. " content_type=" .. type(msg.content))
+        log_info(conf, "message role=" .. tostring(msg.role) .. " content_type=" .. type(msg.content))
         if msg.role == "user" and type(msg.content) == "string" then
             prompt = msg.content
         end
@@ -106,10 +100,10 @@ function plugin:access(conf)
         log_error(conf, "no user message found in request body: " .. raw)
         return kong.response.exit(400, { error = "no user message found in request: " .. raw })
     end
-    log_debug(conf, "extracted prompt: " .. prompt)
+    log_info(conf, "extracted prompt: " .. prompt)
 
     local payload = build_payload(conf, { prompt }, "Input")
-    log_debug(conf, "acuvity request payload: " .. cjson.encode(payload))
+    log_info(conf, "acuvity request payload: " .. cjson.encode(payload))
 
     local res, err = police_request(conf, payload)
     if not res then
@@ -128,7 +122,7 @@ function plugin:access(conf)
     end
 
     log_info(conf, "input scan decision: " .. tostring(result.decision))
-    log_debug(conf, "acuvity response: " .. res.body)
+    log_info(conf, "acuvity response: " .. res.body)
 
     if result.decision == "Deny" then
         local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
@@ -155,7 +149,7 @@ function plugin:response(conf)
     if not raw or raw == "" then
         return
     end
-    log_debug(conf, "raw response body: " .. raw)
+    log_info(conf, "raw response body: " .. raw)
 
     local body = cjson.decode(raw)
     if not body then
@@ -206,7 +200,7 @@ function plugin:response(conf)
     end
 
     log_info(conf, "output scan decision: " .. tostring(result.decision))
-    log_debug(conf, "acuvity response: " .. res.body)
+    log_info(conf, "acuvity response: " .. res.body)
 
     if result.decision == "Deny" then
         local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
