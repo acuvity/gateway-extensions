@@ -2,8 +2,8 @@ local http = require("resty.http")
 local cjson = require("cjson.safe")
 
 local plugin = {
-    PRIORITY = 1000,
-    VERSION = "0.2.0",
+    PRIORITY = 760,
+    VERSION = "0.3.0",
 }
 
 -- Helper: POST JSON to the police endpoint
@@ -27,34 +27,59 @@ local function police_request(conf, payload)
     return res, err
 end
 
+local function get_tool_name()
+    return "kong-tool-placeholder"
+end
+-- Extract the last user message content from an OpenAI-format request body
+local function extract_messages(body)
+    local parsed = cjson.decode(body)
+    if not parsed or type(parsed.messages) ~= "table" then
+        return { body }
+    end
+    local prompt
+    for _, msg in ipairs(parsed.messages) do
+        if msg.role == "user" and type(msg.content) == "string" then
+            prompt = msg.content
+        end
+    end
+    return { prompt or body }
+end
+
+-- Helper: check extractions for redaction and return redacted data if any
+local function get_redacted_data(result)
+    local extractions = result.extractions
+    if not extractions or #extractions == 0 then
+        return nil
+    end
+
+    local ext = extractions[1]
+    local detections = ext.detections or {}
+    for _, d in ipairs(detections) do
+        if d.redacted then
+            return ext.data or ""
+        end
+    end
+
+    return nil
+end
+
 function plugin:access(conf)
     local raw = kong.request.get_raw_body()
     if not raw or raw == "" then
         raw = "{}"
     end
-    local body = raw
 
-    local messages = {}
-    local parsed = cjson.decode(body)
-    if parsed and parsed.messages then
-        for _, m in ipairs(parsed.messages) do
-            if type(m.content) == "string" then
-                messages[#messages + 1] = m.content
-            end
-        end
-    end
-    if #messages == 0 then
-        messages = { body }
-    end
-
+    local messages = extract_messages(raw)
     local provider = conf.provider or "kong-proxy"
+    local tool_name = get_tool_name()
+
     local police_payload = {
         messages = messages,
         anonymization = "VariableSize",
         provider = provider,
         type = "Input",
         tools = {
-            ["anthropic/messages"] = { name = "anthropic/messages", category = "Server" },
+            [tool_name] = { name = tool_name, category = "Server" },
         },
         user = {
             userClaims = {
@@ -85,30 +110,17 @@ function plugin:access(conf)
         return kong.response.exit(403, { error = reason })
     end
 
-    -- Allow request to upstream
-    local extractions = result.extractions
-    if extractions and #extractions > 0 then
-        local ext = extractions[1]
-        local has_redaction = false
-        local detections = ext.detections or {}
-        for _, d in ipairs(detections) do
-            if d.redacted then
-                has_redaction = true
-                break
-            end
-        end
-        if has_redaction then
-            local redacted_text = ext.data or ""
-            local original = cjson.decode(body)
-            if original and original.messages then
-                -- Replace user message content with redacted version
-                for _, msg in ipairs(original.messages) do
-                    if msg.role == "user" and type(msg.content) == "string" then
-                        msg.content = redacted_text
-                    end
+    -- Redaction on input: replace user message content with redacted version
+    local redacted = get_redacted_data(result)
+    if redacted then
+        local original = cjson.decode(raw)
+        if original and original.messages then
+            for _, msg in ipairs(original.messages) do
+                if msg.role == "user" and type(msg.content) == "string" then
+                    msg.content = redacted
                 end
-                kong.service.request.set_raw_body(cjson.encode(original))
             end
+            kong.service.request.set_raw_body(cjson.encode(original))
         end
     end
 
@@ -125,45 +137,33 @@ function plugin:response(conf)
     kong.response.set_raw_body(raw)
     kong.response.set_header("Content-Length", tostring(#raw))
 
-    local body = raw
-
-    -- Detect which service based on the original request path
-    local path = kong.request.get_path() or ""
-
-    local parsed = cjson.decode(body)
-    if not parsed then
+    local original = cjson.decode(raw)
+    if not original then
         return
     end
 
-    local messages = {}
-    local tool_name
-
-    if path:find("/anthropic") then
-        -- Anthropic response: {"content": [{"type": "text", "text": "..."}], ...}
-        local content_blocks = parsed.content or {}
-        for _, b in ipairs(content_blocks) do
-            if b.type == "text" and b.text then
-                messages[#messages + 1] = b.text
+    local completion
+    -- OpenAI-format response (Kong AI Gateway normalizes Anthropic → OpenAI)
+    if original.choices and type(original.choices) == "table" and original.choices[1] then
+        local msg = original.choices[1].message
+        if msg and type(msg.content) == "string" then
+            completion = msg.content
+        end
+    end
+    -- Fallback: native Anthropic format
+    if not completion and original.content and type(original.content) == "table" then
+        for _, block in ipairs(original.content) do
+            if block.type == "text" and type(block.text) == "string" then
+                completion = block.text
+                break
             end
         end
-        tool_name = "anthropic/messages"
-    elseif path:find("/exa") then
-        -- Exa response: {"results": [{"title": "...", "url": "...", ...}]}
-        local results = parsed.results or {}
-        for _, r in ipairs(results) do
-            messages[#messages + 1] = (r.title or "") .. " " .. (r.url or "") .. " " .. (r.text or "")
-        end
-        tool_name = "exa/search"
-    else
-        messages = { body }
-        tool_name = "unknown"
     end
+    local messages = { completion or raw }
 
-    if #messages == 0 then
-        return
-    end
+    local provider = conf.provider or "kong-proxy"
+    local tool_name = get_tool_name()
 
-    local provider = conf.provider or "scan/kong-proxy"
     local police_payload = {
         messages = messages,
         anonymization = "VariableSize",
@@ -201,46 +201,25 @@ function plugin:response(conf)
         return kong.response.exit(403, { error = reason })
     end
 
-    -- Redaction on output
-    local extractions = result.extractions
-    if extractions and #extractions > 0 then
-        local ext = extractions[1]
-        local has_redaction = false
-        local detections = ext.detections or {}
-        for _, d in ipairs(detections) do
-            if d.redacted then
-                has_redaction = true
-                break
+    local redacted = get_redacted_data(result)
+    if redacted and original then
+        local rewrote = false
+        if original.choices and original.choices[1] and original.choices[1].message then
+            original.choices[1].message.content = redacted
+            rewrote = true
+        elseif original.content then
+            for _, block in ipairs(original.content) do
+                if block.type == "text" then
+                    block.text = redacted
+                    break
+                end
             end
+            rewrote = true
         end
-        if has_redaction then
-            local redacted_text = ext.data or ""
-            if path:find("/anthropic") then
-                -- Replace text in Anthropic content blocks
-                if parsed and parsed.content then
-                    for _, block in ipairs(parsed.content) do
-                        if block.type == "text" and block.text then
-                            block.text = redacted_text
-                        end
-                    end
-                    local new_body = cjson.encode(parsed)
-                    kong.response.set_raw_body(new_body)
-                    kong.response.set_header("Content-Length", tostring(#new_body))
-                end
-            elseif path:find("/exa") then
-                -- Replace text in Exa results
-                if parsed and parsed.results then
-                    for _, r in ipairs(parsed.results) do
-                        r.text = redacted_text
-                    end
-                    local new_body = cjson.encode(parsed)
-                    kong.response.set_raw_body(new_body)
-                    kong.response.set_header("Content-Length", tostring(#new_body))
-                end
-            else
-                kong.response.set_raw_body(redacted_text)
-                kong.response.set_header("Content-Length", tostring(#redacted_text))
-            end
+        if rewrote then
+            local new_body = cjson.encode(original)
+            kong.response.set_raw_body(new_body)
+            kong.response.set_header("Content-Length", tostring(#new_body))
         end
     end
 end

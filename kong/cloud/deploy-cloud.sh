@@ -28,10 +28,10 @@ fi
 
 echo "Control Plane ID: $CONTROL_PLANE_ID"
 
-# 2. Upload custom plugin
+# 2. Upload custom plugin (upsert by name)
 echo "Uploading custom plugin '$PLUGIN_NAME'..."
-UPLOAD_RESPONSE=$(curl -s -X POST \
-  "$KONNECT_API/control-planes/$CONTROL_PLANE_ID/core-entities/custom-plugins" \
+HTTP_CODE=$(curl -s -o /tmp/plugin_response.json -w "%{http_code}" -X PUT \
+  "$KONNECT_API/control-planes/$CONTROL_PLANE_ID/core-entities/custom-plugins/$PLUGIN_NAME" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $KONNECT_TOKEN" \
   -d "$(jq -n \
@@ -39,30 +39,13 @@ UPLOAD_RESPONSE=$(curl -s -X POST \
     --arg schema "$(cat "$SCRIPT_DIR/plugins/$PLUGIN_NAME/schema.lua")" \
     --arg name "$PLUGIN_NAME" \
     '{handler:$handler, name:$name, schema:$schema}')")
-
-# If plugin already exists, update it
-if echo "$UPLOAD_RESPONSE" | jq -e '.status' > /dev/null 2>&1; then
-  echo "Plugin already exists, updating..."
-  curl -s -X PUT \
-    "$KONNECT_API/control-planes/$CONTROL_PLANE_ID/core-entities/custom-plugins/$PLUGIN_NAME" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $KONNECT_TOKEN" \
-    -d "$(jq -n \
-      --arg handler "$(cat "$SCRIPT_DIR/plugins/$PLUGIN_NAME/handler.lua")" \
-      --arg schema "$(cat "$SCRIPT_DIR/plugins/$PLUGIN_NAME/schema.lua")" \
-      --arg name "$PLUGIN_NAME" \
-      '{handler:$handler, name:$name, schema:$schema}')" > /dev/null
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+  echo "ERROR: Failed to upload plugin (HTTP $HTTP_CODE): $(cat /tmp/plugin_response.json)"
+  exit 1
 fi
+echo "Plugin uploaded."
 
-# 3. Register plugin schema
-echo "Registering plugin schema..."
-curl -s -X PUT \
-  "$KONNECT_API/control-planes/$CONTROL_PLANE_ID/core-entities/plugin-schemas/$PLUGIN_NAME" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $KONNECT_TOKEN" \
-  --json "{\"lua_schema\": $(jq -Rs . "$SCRIPT_DIR/plugins/$PLUGIN_NAME/schema.lua")}" > /dev/null
-
-# 4. Sync services, routes, and plugin config
+# 4. Sync services, routes, and plugin config (scoped by tag to avoid deleting other resources)
 echo "Syncing services, routes, and plugins..."
 envsubst '${APEX_URL} ${ACUVITY_TOKEN}' < "$SCRIPT_DIR/service-route.yaml" > /tmp/kong-service-route.yaml
 deck gateway sync /tmp/kong-service-route.yaml \
@@ -79,7 +62,7 @@ PROXY_URL=$(echo "$CP_INFO" | jq -r '
   (.protocol // "https") + "://" + .host
 ' | head -1)
 
-# Fallback: derive from control plane endpoint (replace .cp. with .gateways.konggateway)
+# Fallback: derive from control plane endpoint
 if [ -z "$PROXY_URL" ]; then
   CP_HOST=$(echo "$CP_INFO" | jq -r '.config.control_plane_endpoint // empty' | sed 's|^https://||')
   if [ -n "$CP_HOST" ]; then
@@ -90,6 +73,13 @@ fi
 
 echo "=== Done ==="
 echo "Control Plane ID: $CONTROL_PLANE_ID"
+
+# Print service IDs
+SERVICES=$(curl -s "$KONNECT_API/control-planes/$CONTROL_PLANE_ID/core-entities/services" \
+  -H "Authorization: Bearer $KONNECT_TOKEN")
+echo "Service IDs:"
+echo "$SERVICES" | jq -r '.data[] | "  " + .name + ": " + .id'
+
 if [ -n "$PROXY_URL" ]; then
   echo "Proxy URL: $PROXY_URL"
   echo ""

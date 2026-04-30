@@ -11,12 +11,12 @@ services:
           - http
           - https
         strip_path: true
-  - name: exa-service
-    url: https://api.exa.ai
+  - name: openai-service
+    url: https://api.openai.com
     routes:
-      - name: exa-route
+      - name: openai-route
         paths:
-          - /exa
+          - /openai
         protocols:
           - http
           - https
@@ -24,19 +24,8 @@ services:
 
 plugins:
   - name: acuvity-guard
-    service: anthropic-service
     config:
       message: Blocked by policy
-      provider: kong-proxy
-      timeout_ms: 60000
-      apex_url: ${APEX_URL}
-      acuvity_token: ${ACUVITY_TOKEN}
-
-  - name: acuvity-guard
-    service: exa-service
-    config:
-      message: Blocked by policy
-      provider: kong-proxy
       timeout_ms: 60000
       apex_url: ${APEX_URL}
       acuvity_token: ${ACUVITY_TOKEN}
