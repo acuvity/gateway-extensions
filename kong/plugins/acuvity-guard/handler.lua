@@ -6,6 +6,28 @@ local plugin = {
     VERSION = "0.3.0",
 }
 
+local function log_error(conf, msg)
+    kong.log.err("acuvity-guard: " .. msg)
+end
+
+local function log_warn(conf, msg)
+    if conf.log_level == "warn" or conf.log_level == "info" or conf.log_level == "debug" then
+        kong.log.warn("acuvity-guard: " .. msg)
+    end
+end
+
+local function log_info(conf, msg)
+    if conf.log_level == "info" or conf.log_level == "debug" then
+        kong.log.info("acuvity-guard: " .. msg)
+    end
+end
+
+local function log_debug(conf, msg)
+    if conf.log_level == "debug" then
+        kong.log.debug("acuvity-guard: " .. msg)
+    end
+end
+
 local function police_request(conf, payload)
     local httpc = http.new()
     httpc:set_timeout(conf.timeout_ms)
@@ -60,49 +82,63 @@ end
 
 function plugin:access(conf)
     local raw = kong.request.get_raw_body()
-    if conf.debug then kong.log.debug("acuvity-guard: raw request body=" .. tostring(raw)) end
     if not raw or raw == "" then
+        log_error(conf, "empty request body")
         return kong.response.exit(400, { error = "empty request body" })
     end
+    log_debug(conf, "raw request body: " .. raw)
 
     local body = cjson.decode(raw)
-    if conf.debug then kong.log.debug("acuvity-guard: decoded request body=" .. cjson.encode(body)) end
     if not body or type(body.messages) ~= "table" then
+        log_error(conf, "request is not OpenAI chat completions format")
         return kong.response.exit(400, { error = "request is not OpenAI chat completions format" })
     end
 
     local prompt
     for _, msg in ipairs(body.messages) do
-        if conf.debug then kong.log.debug("acuvity-guard: message role=" .. tostring(msg.role) .. " content_type=" .. type(msg.content)) end
+        log_debug(conf, "message role=" .. tostring(msg.role) .. " content_type=" .. type(msg.content))
         if msg.role == "user" and type(msg.content) == "string" then
             prompt = msg.content
         end
     end
 
-    if conf.debug then kong.log.debug("acuvity-guard: prompt=" .. tostring(prompt)) end
     if not prompt then
+        log_error(conf, "no user message found in request body: " .. raw)
         return kong.response.exit(400, { error = "no user message found in request: " .. raw })
     end
+    log_debug(conf, "extracted prompt: " .. prompt)
 
-    local res, err = police_request(conf, build_payload(conf, { prompt }, "Input"))
+    local payload = build_payload(conf, { prompt }, "Input")
+    log_debug(conf, "acuvity request payload: " .. cjson.encode(payload))
+
+    local res, err = police_request(conf, payload)
     if not res then
+        log_error(conf, "policy check failed: " .. tostring(err))
         return kong.response.exit(403, { error = "policy check failed: " .. tostring(err) })
     end
     if res.status ~= 200 then
+        log_error(conf, "policy check HTTP " .. res.status .. ": " .. (res.body or ""))
         return kong.response.exit(403, { error = "policy check HTTP " .. res.status .. ": " .. (res.body or "") })
     end
 
     local result = cjson.decode(res.body)
     if not result then
+        log_error(conf, "failed to decode acuvity response")
         return kong.response.exit(403, { error = conf.message or "Blocked by policy" })
     end
+
+    log_info(conf, "input scan decision: " .. tostring(result.decision))
+    log_debug(conf, "acuvity response: " .. res.body)
+
     if result.decision == "Deny" then
         local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
+        log_error(conf, "input blocked: " .. reason)
         return kong.response.exit(403, { error = reason })
     end
 
     local redacted = get_redacted_data(result)
     if redacted then
+        log_warn(conf, "input redacted by acuvity")
         for _, msg in ipairs(body.messages) do
             if msg.role == "user" and type(msg.content) == "string" then
                 msg.content = redacted
@@ -119,26 +155,25 @@ function plugin:response(conf)
     if not raw or raw == "" then
         return
     end
+    log_debug(conf, "raw response body: " .. raw)
 
     local body = cjson.decode(raw)
     if not body then
-        kong.log.err("acuvity-guard: response is not valid JSON: " .. raw:sub(1, 200))
+        log_error(conf, "response is not valid JSON: " .. raw:sub(1, 200))
         return kong.response.exit(502, { error = "upstream response is not valid JSON" })
     end
 
     local completion
     local format
 
-    -- OpenAI chat completions format
     if body.choices and type(body.choices) == "table" and body.choices[1] then
-    local msg = body.choices[1].message
+        local msg = body.choices[1].message
         if msg and type(msg.content) == "string" then
             completion = msg.content
             format = "openai"
         end
     end
 
-    -- Native Anthropic format fallback
     if not completion and body.content and type(body.content) == "table" then
         for _, block in ipairs(body.content) do
             if block.type == "text" and type(block.text) == "string" then
@@ -150,14 +185,18 @@ function plugin:response(conf)
     end
 
     if not completion then
+        log_error(conf, "upstream response missing completion text")
         return kong.response.exit(502, { error = "upstream response missing completion text" })
     end
+    log_info(conf, "detected response format: " .. tostring(format))
 
     local res, err = police_request(conf, build_payload(conf, { completion }, "Output"))
     if not res then
+        log_error(conf, "output policy check failed: " .. tostring(err))
         return kong.response.exit(403, { error = "output policy check failed: " .. tostring(err) })
     end
     if res.status ~= 200 then
+        log_error(conf, "output policy check HTTP " .. res.status .. ": " .. (res.body or ""))
         return kong.response.exit(403, { error = "output policy check HTTP " .. res.status .. ": " .. (res.body or "") })
     end
 
@@ -165,15 +204,21 @@ function plugin:response(conf)
     if not result then
         return
     end
+
+    log_info(conf, "output scan decision: " .. tostring(result.decision))
+    log_debug(conf, "acuvity response: " .. res.body)
+
     if result.decision == "Deny" then
         local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
+        log_error(conf, "output blocked: " .. reason)
         return kong.response.exit(403, { error = reason })
     end
 
     local redacted = get_redacted_data(result)
     if redacted then
+        log_warn(conf, "output redacted by acuvity")
         if format == "openai" then
-        body.choices[1].message.content = redacted
+            body.choices[1].message.content = redacted
         elseif format == "anthropic" then
             for _, block in ipairs(body.content) do
                 if block.type == "text" then

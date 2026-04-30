@@ -21,7 +21,7 @@ A custom Lua plugin (`acuvity-guard`) for Kong AI Gateway that enforces Acuvity 
 | `message` | No | `Blocked by policy` | Error message returned when request is blocked |
 | `provider` | No | `kong-proxy` | Provider name sent to Acuvity |
 | `timeout_ms` | No | `3000` | Acuvity API request timeout in milliseconds |
-| `debug` | No | `false` | Enable debug logging |
+| `log_level` | No | `error` | Enable Kong logging of type log_level |
 
 ## Prerequisites
 
