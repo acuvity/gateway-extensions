@@ -71,11 +71,13 @@ function plugin:access(conf)
 
     local prompt
     for _, msg in ipairs(body.messages) do
+        kong.log.debug("acuvity-guard: message role=" .. tostring(msg.role) .. " content_type=" .. type(msg.content))
         if msg.role == "user" and type(msg.content) == "string" then
             prompt = msg.content
         end
     end
 
+    kong.log.debug("acuvity-guard: prompt=" .. tostring(prompt))
     if not prompt then
         return kong.response.exit(400, { error = "no user message found in request" })
     end
