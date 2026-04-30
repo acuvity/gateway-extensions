@@ -157,14 +157,14 @@ function plugin:response(conf)
     local body = cjson.decode(raw)
     if not body then
         log_error(conf, "response is not valid JSON: " .. raw:sub(1, 200))
-        return kong.response.exit(502, { error = "upstream response is not valid JSON" .. raw:sub(1, 200) })
+        return kong.response.exit(502, { error = "upstream response is not valid JSON: " .. raw:sub(1, 200) })
     end
 
     local completion
     local format
 
     if body.choices and type(body.choices) == "table" and body.choices[1] then
-        local msg = body.choices[1].message
+    local msg = body.choices[1].message
         if msg and type(msg.content) == "string" then
             completion = msg.content
             format = "openai"
@@ -202,7 +202,7 @@ function plugin:response(conf)
     local result = cjson.decode(res.body)
     if not result then
         log_error(conf, "failed to decode acuvity response: " .. res.body)
-        return kong.response.exit(500, { error = "Failed to decode acuvity response: " .. res.body })   
+        return kong.response.exit(500, { error = "failed to decode acuvity response: " .. res.body })
     end
 
     log_info(conf, "output scan decision: " .. tostring(result.decision))
@@ -213,12 +213,22 @@ function plugin:response(conf)
         log_warn(conf, "output blocked: " .. reason)
         return kong.response.exit(403, { error = reason })
     end
+    if result.decision == "ForbiddenUser" then
+        local reason = (result.reasons and result.reasons[1]) or (conf.message or "Forbidden user")
+        log_warn(conf, "forbidden user: " .. reason)
+        return kong.response.exit(403, { error = reason })
+    end
+    if result.decision == "Ask" then
+        local reason = (result.reasons and result.reasons[1]) or (conf.message or "Forbidden user")
+        log_warn(conf, "output blocked " .. reason)
+        return kong.response.exit(403, { error = reason })
+    end
 
     local redacted = get_redacted_data(result)
     if redacted then
         log_warn(conf, "output redacted by acuvity")
         if format == "openai" then
-            body.choices[1].message.content = redacted
+        body.choices[1].message.content = redacted
         elseif format == "anthropic" then
             for _, block in ipairs(body.content) do
                 if block.type == "text" then
