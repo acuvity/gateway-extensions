@@ -16,7 +16,7 @@ return {
                     { acuvity_token = { type = "string", required = true } },
                     { username = { type = "string", required = true } },
                     { apptoken_name = { type = "string", required = true } },
-                    { log_level = { type = "string", default = "error", one_of = { "error", "warn", "info" } } },
+                    { log_level = { type = "string", default = "none", one_of = { "none", "error", "warn", "info" } } },
                 },
             },
         },

@@ -7,7 +7,9 @@ local plugin = {
 }
 
 local function log_error(conf, msg)
-    kong.log.err("acuvity-guard: " .. msg)
+    if conf.log_level == "error" or conf.log_level == "warn" or conf.log_level == "info" then
+        kong.log.err("acuvity-guard: " .. msg)
+    end
 end
 
 local function log_warn(conf, msg)
@@ -55,20 +57,21 @@ end
 
 local function build_payload(conf, messages, scan_type)
     local provider = conf.provider or "kong-proxy"
-    local tool_name = "kong-acuvity-guard"
     return {
         messages = messages,
         anonymization = "VariableSize",
         provider = provider,
         type = scan_type,
-        tools = {
-            [tool_name] = { name = tool_name, category = "Server" },
-        },
         user = {
             claims = {
                 "provider=" .. provider,
                 "@apptoken:name=" .. (conf.apptoken_name or ""),
             },
+            userClaims = {
+                "provider=" .. provider,
+                "@apptoken:name=" .. (conf.apptoken_name or ""),
+            },
+            username = conf.username or "",
             name = conf.username or "",
         },
     }
