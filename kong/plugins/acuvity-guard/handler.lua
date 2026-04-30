@@ -129,7 +129,17 @@ function plugin:access(conf)
 
     if result.decision == "Deny" then
         local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
-        log_error(conf, "input blocked: " .. reason)
+        log_warn(conf, "input blocked: " .. reason)
+        return kong.response.exit(403, { error = reason })
+    end
+    if result.decision == "ForbiddenUser" then
+        local reason = (result.reasons and result.reasons[1]) or (conf.message or "Forbidden user")
+        log_warn(conf, "forbidden user: " .. reason)
+        return kong.response.exit(403, { error = reason })
+    end
+    if result.decision == "Ask" then
+        local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
+        log_warn(conf, "output blocked " .. reason)
         return kong.response.exit(403, { error = reason })
     end
 
@@ -219,7 +229,7 @@ function plugin:response(conf)
         return kong.response.exit(403, { error = reason })
     end
     if result.decision == "Ask" then
-        local reason = (result.reasons and result.reasons[1]) or (conf.message or "Forbidden user")
+        local reason = (result.reasons and result.reasons[1]) or (conf.message or "Blocked by policy")
         log_warn(conf, "output blocked " .. reason)
         return kong.response.exit(403, { error = reason })
     end
