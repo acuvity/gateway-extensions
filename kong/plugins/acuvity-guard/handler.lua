@@ -39,7 +39,7 @@ end
 
 local function build_payload(conf, messages, scan_type)
     local provider = conf.provider or "kong-proxy"
-    local tool_name = "kong-tool-placeholder"
+    local tool_name = "kong-acuvity-guard"
     return {
         messages = messages,
         anonymization = "VariableSize",
@@ -49,11 +49,11 @@ local function build_payload(conf, messages, scan_type)
             [tool_name] = { name = tool_name, category = "Server" },
         },
         user = {
-            userClaims = {
+            claims = {
                 "provider=" .. provider,
-                "@apptoken:name=new-kong-test-token",
+                "@apptoken:name=" .. (conf.apptoken_name or ""),
             },
-            username = "kanav@acuvity.ai",
+            name = conf.username or "",
         },
     }
 end
@@ -127,7 +127,7 @@ function plugin:response(conf)
 
     -- OpenAI chat completions format
     if body.choices and type(body.choices) == "table" and body.choices[1] then
-        local msg = body.choices[1].message
+    local msg = body.choices[1].message
         if msg and type(msg.content) == "string" then
             completion = msg.content
             format = "openai"
@@ -169,7 +169,7 @@ function plugin:response(conf)
     local redacted = get_redacted_data(result)
     if redacted then
         if format == "openai" then
-            body.choices[1].message.content = redacted
+        body.choices[1].message.content = redacted
         elseif format == "anthropic" then
             for _, block in ipairs(body.content) do
                 if block.type == "text" then

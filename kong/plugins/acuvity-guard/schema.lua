@@ -14,6 +14,8 @@ return {
                     { timeout_ms = { type = "number", default = 3000 } },
                     { apex_url = { type = "string", required = true } },
                     { acuvity_token = { type = "string", required = true } },
+                    { username = { type = "string", required = true } },
+                    { apptoken_name = { type = "string", required = true } },
                 },
             },
         },
