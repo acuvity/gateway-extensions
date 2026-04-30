@@ -9,7 +9,7 @@ return {
             config = {
                 type = "record",
                 fields = {
-                    { message = { type = "string", default = "Blocked by policy" } },
+                    { message = { type = "string", default = "Blocked by Acuvity policy" } },
                     { provider = { type = "string", default = "kong-proxy" } },
                     { timeout_ms = { type = "number", default = 3000 } },
                     { apex_url = { type = "string", required = true } },
