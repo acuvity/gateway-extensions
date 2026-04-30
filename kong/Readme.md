@@ -8,7 +8,6 @@ A custom Lua plugin (`acuvity-guard`) for Kong AI Gateway that enforces Acuvity 
 |-------|:---------:|-------|
 | Prompt | Yes | Access phase scans user messages before forwarding to LLM |
 | Response | Yes | Response phase scans completions before returning to client |
-| Streaming | No | Requires response buffering |
 
 ## Configuration
 
@@ -21,7 +20,7 @@ A custom Lua plugin (`acuvity-guard`) for Kong AI Gateway that enforces Acuvity 
 | `message` | No | `Blocked by policy` | Error message returned when request is blocked |
 | `provider` | No | `kong-proxy` | Provider name sent to Acuvity |
 | `timeout_ms` | No | `3000` | Acuvity API request timeout in milliseconds |
-| `log_level` | No | `error` | Enable Kong logging of type log_level |
+| `log_level` | No | `none` | Enable Kong logging of type log_level |
 
 ## Prerequisites
 
@@ -106,6 +105,8 @@ export CONTROL_PLANE_ID=     # Your control plane ID
 export SERVICE_ID=           # ID of the AI Gateway service
 export APEX_URL=             # Acuvity Apex endpoint
 export ACUVITY_TOKEN=        # Acuvity app token
+export APPTOKEN_NAME=        # App token name sent to Acuvity (e.g. my-kong-token)
+export ACUVITY_USERNAME=     # Username sent to Acuvity in the user context
 
 ./hybrid/configure-gateway.sh
 ```

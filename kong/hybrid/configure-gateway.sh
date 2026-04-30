@@ -15,6 +15,8 @@ PLUGIN_NAME="acuvity-guard"
 : "${SERVICE_ID:?Export SERVICE_ID with your Konnect service ID}"
 : "${APEX_URL:?Export APEX_URL (e.g. https://xxx.acuvity.ai)}"
 : "${ACUVITY_TOKEN:?Export ACUVITY_TOKEN with your Acuvity app token}"
+: "${APPTOKEN_NAME:?Export APPTOKEN_NAME with your Acuvity app token name}"
+: "${ACUVITY_USERNAME:?Export ACUVITY_USERNAME with your Acuvity username}"
 
 KONNECT_API="https://us.api.konghq.com/v2"
 
@@ -48,7 +50,9 @@ curl -X POST \
     "service": {"id": "'"$SERVICE_ID"'"},
     "config": {
       "apex_url": "'"$APEX_URL"'",
-      "acuvity_token": "'"$ACUVITY_TOKEN"'"
+      "acuvity_token": "'"$ACUVITY_TOKEN"'",
+      "apptoken_name": "'"$APPTOKEN_NAME"'",
+      "username": "'"$ACUVITY_USERNAME"'"
     }
   }'
 
