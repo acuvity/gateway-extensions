@@ -11,7 +11,7 @@ PLUGIN_NAME="acuvity-guard"
 : "${KONNECT_TOKEN:?Export KONNECT_TOKEN with your Konnect PAT}"
 : "${CONTROL_PLANE_ID:?Export CONTROL_PLANE_ID with your Konnect control plane ID}"
 : "${SERVICE_ID:?Export SERVICE_ID with your AI Gateway service ID}"
-: "${APEX_URL:?Export APEX_URL (e.g. https://xxx.acuvity.dev)}"
+: "${APEX_URL:?Export APEX_URL (e.g. https://xxx.acuvity.ai)}"
 : "${ACUVITY_TOKEN:?Export ACUVITY_TOKEN with your Acuvity app token}"
 
 KONNECT_API="https://us.api.konghq.com/v2"
