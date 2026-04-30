@@ -60,11 +60,13 @@ end
 
 function plugin:access(conf)
     local raw = kong.request.get_raw_body()
+    kong.log.debug("acuvity-guard: raw request body=" .. tostring(raw))
     if not raw or raw == "" then
         return kong.response.exit(400, { error = "empty request body" })
     end
 
     local body = cjson.decode(raw)
+    kong.log.debug("acuvity-guard: decoded request body=" .. cjson.encode(body))
     if not body or type(body.messages) ~= "table" then
         return kong.response.exit(400, { error = "request is not OpenAI chat completions format" })
     end
