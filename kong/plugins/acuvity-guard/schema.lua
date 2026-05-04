@@ -11,7 +11,7 @@ return {
                 fields = {
                     { message = { type = "string", default = "Blocked by Acuvity policy" } },
                     { provider = { type = "string", default = "kong-proxy" } },
-                    { timeout_ms = { type = "number", default = 3000 } },
+                    { timeout_ms = { type = "number", default = 5000 } },
                     { apex_url = { type = "string", required = true } },
                     { acuvity_token = { type = "string", required = true } },
                     { username = { type = "string", required = true } },
