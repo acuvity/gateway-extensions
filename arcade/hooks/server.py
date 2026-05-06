@@ -114,9 +114,6 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
         raise HTTPException(status_code=401, detail="invalid 'identity' field in token")
 
     provider = "arcade-dev"
-    for i in identity:
-        if i.startswith("@apptoken:name="):
-            provider = i.split("=", 1)[1]
 
     if iss not in SUPPORTED_ISSUERS:
         raise HTTPException(status_code=401, detail=f"unsupported issuer: {iss}")
@@ -155,7 +152,7 @@ async def call_apex(
                     "provider": provider,
                     "type": msg_type,
                     "tools": tools,
-                    "user": {"claims": claims, "name": user_id},
+                    "user": {"userClaims": claims, "username": user_id},
                 },
                 headers={
                     "Authorization": f"Bearer {token}",
