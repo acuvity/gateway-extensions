@@ -93,7 +93,7 @@ def _validate_token_signature(token: str, iss: str, unverified: dict) -> None:
         raise HTTPException(status_code=401, detail=f"token signature validation failed: {e}") from e
 
 
-def verify_apex_auth(request: Request) -> tuple[str, str | None]:
+def verify_apex_auth(request: Request) -> tuple[str, str | None, str, list, str, str]:
     auth_token = request.headers.get("Authorization", "")
     token = auth_token.removeprefix("Bearer ") if auth_token.startswith("Bearer ") else None
     if not token:
@@ -112,6 +112,10 @@ def verify_apex_auth(request: Request) -> tuple[str, str | None]:
     identity = unverified.get("identity", [])
     if not identity:
         raise HTTPException(status_code=401, detail="invalid 'identity' field in token")
+
+    component_name = unverified.get("@app:component:name", "")
+    if not component_name:
+        raise HTTPException(status_code=401, detail="token is not a component token: missing '@app:component:name'")
 
     provider = "arcade-dev"
 
@@ -152,7 +156,10 @@ async def call_apex(
                     "provider": provider,
                     "type": msg_type,
                     "tools": tools,
-                    "user": {"userClaims": claims, "username": user_id},
+                    "app": {
+                        "userClaims": claims,
+                        "username": user_id,
+                    },
                 },
                 headers={
                     "Authorization": f"Bearer {token}",
